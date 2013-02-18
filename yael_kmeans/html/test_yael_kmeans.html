@@ -1,0 +1,453 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>test_yael_kmeans</title><meta name="generator" content="MATLAB 7.9"><meta name="date" content="2011-11-04"><meta name="m-file" content="test_yael_kmeans"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h2>Contents</h2><div><ul><li><a href="#2">Example 1: Cluster a mixture of 3 Gaussians mixture %%</a></li><li><a href="#3">Example 2: Cluster a mixture of K Gaussians mixture %%</a></li><li><a href="#4">Example 3: Cluster uniform random data %%</a></li><li><a href="#5">Example 4: Cluster spiral data %%</a></li></ul></div><pre class="codeinput"><span class="comment">% Fast mex K-means clustering algorithm with possibility of K-mean++ initialization</span>
+<span class="comment">% (mex-interface modified from the original yael package https://gforge.inria.fr/projects/yael)</span>
+<span class="comment">%</span>
+<span class="comment">% - Accept single/double precision input</span>
+<span class="comment">% - Support of BLAS/OpenMP for multi-core computation</span>
+<span class="comment">%</span>
+<span class="comment">% Usage</span>
+<span class="comment">% ------</span>
+<span class="comment">%</span>
+<span class="comment">% [centroids, dis, assign , nassign , qerr] = yael_kmeans(X , [options]);</span>
+<span class="comment">%</span>
+<span class="comment">%</span>
+<span class="comment">% Inputs</span>
+<span class="comment">% -------</span>
+<span class="comment">%</span>
+<span class="comment">% X                                        Input data matrix (d x N) in single/double format</span>
+<span class="comment">%</span>
+<span class="comment">% options</span>
+<span class="comment">%        K                                 Number of centroid  (default K = 10)</span>
+<span class="comment">%        max_ite                           Number of iteration (default max_ite = 50)</span>
+<span class="comment">%        redo                              Number of time to restart K-means (default redo = 1)</span>
+<span class="comment">%        verbose                           Verbose level = {0,1,2,3} (default verbose = 0)</span>
+<span class="comment">%        init_random_mode                  0 &lt;=&gt; Kmeans++ initialization, 1&lt;=&gt; random selection ...</span>
+<span class="comment">%        normalize_sophisticated_mode      0/1 (No/Yes)</span>
+<span class="comment">%        BLOCK_N1                          Cache size block (default BLOCK_N1 = 1024)</span>
+<span class="comment">%        BLOCK_N2                          Cache size block (default BLOCK_N2 = 1024)</span>
+<span class="comment">%        seed                              Seed number for internal random generator (default random seed according to time)</span>
+<span class="comment">%</span>
+<span class="comment">% If compiled with the "OMP" compilation flag</span>
+<span class="comment">%</span>
+<span class="comment">%        num_threads                       Number of threads   (default num_threads = max number of core)</span>
+<span class="comment">%</span>
+<span class="comment">%</span>
+<span class="comment">% Outputs</span>
+<span class="comment">% -------</span>
+<span class="comment">%</span>
+<span class="comment">% centroids                               Centroids matrix (d x K) in single/double format</span>
+<span class="comment">% dis                                     Distance of each xi to the closest centroid (1 x N) in single/double format</span>
+<span class="comment">% assign                                  Index of closest centroid to xi, i = 1,...,N in UINT32 format</span>
+<span class="comment">% nassign                                 Number of data associated with each cluster (1 x K) in UINT32 format</span>
+<span class="comment">% qerr                                    Quantification error during training process (1 x options.max_ite) in single/double format</span>
+</pre><h2>Example 1: Cluster a mixture of 3 Gaussians mixture %%<a name="2"></a></h2><pre class="codeinput">clear,close <span class="string">all</span>
+K                                   = 3;
+mu                                  = cat(3 , [-2.5 ; -3] , [0 ; 0] ,[ 5 ; 5]);                <span class="comment">%(d x 1 x M)</span>
+sigma                               = cat(3 , [2 0; 0 1] , [2 -.2; -.2 2] , [1 .9; .9 1]  ); <span class="comment">%(d x d x M)</span>
+p                                   = cat(3 , [0.3] , [0.2]  , [0.5]);                       <span class="comment">%(1 x 1 x M)</span>
+N                                   = 10000;
+[Z , index]                         = sample_mvgm(N , mu , sigma , p);
+[x , y]                             = ndellipse(mu , sigma);
+
+options.K                           = 3;
+options.max_ite                     = 50;
+options.num_threads                 = 2;
+
+tic,[centroids, dis, assign , nassign , qerr]         = yael_kmeans(Z  , options);,toc
+
+figure(1)
+plot(Z(1 , :) , Z(2 , :) , <span class="string">'k+'</span>  , x , y , <span class="string">'g'</span> , <span class="string">'markersize'</span> , 2 , <span class="string">'linewidth'</span> , 2);
+hold <span class="string">on</span>
+plot(reshape(mu(1 , : , :) , 1 , K) , reshape(mu(2 , : , :) , 1 , K)  , <span class="string">'r+'</span>  ,  centroids(1 , :) , centroids(2 , :) , <span class="string">'mo'</span>, <span class="string">'markersize'</span> , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  <span class="string">'linewidth'</span> , 2)
+h = title(sprintf(<span class="string">'Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters'</span> , K , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12)
+
+hold <span class="string">off</span>
+
+figure(2)
+h = semilogy(1:options.max_ite , qerr);
+ylabel(<span class="string">'Quantification Error'</span>, <span class="string">'fontsize'</span> , 11)
+xlabel(<span class="string">'Kmeans iteration'</span> , <span class="string">'fontsize'</span> , 11)
+set(h , <span class="string">'linewidth'</span> , 2)
+h = title(sprintf(<span class="string">'Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters'</span> , K , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12)
+
+grid <span class="string">on</span>
+</pre><pre class="codeoutput">Elapsed time is 0.090960 seconds.
+</pre><img vspace="5" hspace="5" src="test_yael_kmeans_01.png" alt=""> <img vspace="5" hspace="5" src="test_yael_kmeans_02.png" alt=""> <h2>Example 2: Cluster a mixture of K Gaussians mixture %%<a name="3"></a></h2><pre class="codeinput">d                                       = 2;
+K                                       = 10;
+clust_spread                            = 0.1;
+N                                       = 20000;
+
+
+
+[mu , sigma , p]                        = gene_mvgm(d , K , clust_spread);
+
+[Z , index]                             = sample_mvgm(N , mu , sigma , p);
+[x , y]                                 = ndellipse(mu , sigma);
+
+options.K                               = K;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = -1;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(3)
+plot(Z(1 , :) , Z(2 , :) , <span class="string">'k+'</span>  , x , y , <span class="string">'g'</span> , <span class="string">'markersize'</span> , 2 , <span class="string">'linewidth'</span> , 2);
+hold <span class="string">on</span>
+plot(reshape(mu(1 , : , :) , 1 , K) , reshape(mu(2 , : , :) , 1 , K)  , <span class="string">'r+'</span>  ,  centroids(1 , :) , centroids(2 , :) , <span class="string">'mo'</span>, <span class="string">'markersize'</span> , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  <span class="string">'linewidth'</span> , 2);
+h = title(sprintf(<span class="string">'Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters'</span> , K , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12);
+
+hold <span class="string">off</span>
+
+figure(4)
+h = semilogy(1:options.max_ite , qerr);
+ylabel(<span class="string">'Quantification Error'</span>, <span class="string">'fontsize'</span> , 11)
+xlabel(<span class="string">'Kmeans iteration'</span> , <span class="string">'fontsize'</span> , 11)
+set(h , <span class="string">'linewidth'</span> , 2)
+h = title(sprintf(<span class="string">'Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters'</span> , K , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12)
+grid <span class="string">on</span>
+</pre><pre class="codeoutput">Elapsed time is 0.028479 seconds.
+Warning: Negative data ignored 
+Warning: Negative data ignored 
+Warning: Negative data ignored 
+</pre><img vspace="5" hspace="5" src="test_yael_kmeans_03.png" alt=""> <img vspace="5" hspace="5" src="test_yael_kmeans_04.png" alt=""> <h2>Example 3: Cluster uniform random data %%<a name="4"></a></h2><pre class="codeinput">d                                       = 2;
+N                                       = 2000;
+Z                                       = rand(d , N);
+
+options.K                               = 50;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = -1;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(5)
+plot(Z(1 , :) , Z(2 , :) , <span class="string">'k+'</span> , <span class="string">'markersize'</span> , 2 , <span class="string">'linewidth'</span> , 2);
+hold <span class="string">on</span>
+plot(centroids(1 , :) , centroids(2 , :) , <span class="string">'mo'</span>, <span class="string">'markersize'</span> , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  <span class="string">'linewidth'</span> , 2);
+h = title(sprintf(<span class="string">'Kmeans clustering for uniform data, assuming K = %d clusters'</span> , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12);
+
+hold <span class="string">off</span>
+
+
+
+figure(6)
+
+bar(1:options.K , nassign)
+ylabel(<span class="string">'Assignement'</span>, <span class="string">'fontsize'</span> , 11)
+xlabel(<span class="string">'Cluster #'</span> , <span class="string">'fontsize'</span> , 11)
+axis([-0.0 , options.K+0.5 , 0 , 1.1*max(nassign)])
+h = title(sprintf(<span class="string">'Assignement for the K=%d clusters'</span> ,options.K));
+</pre><pre class="codeoutput">Elapsed time is 0.011166 seconds.
+</pre><img vspace="5" hspace="5" src="test_yael_kmeans_05.png" alt=""> <img vspace="5" hspace="5" src="test_yael_kmeans_06.png" alt=""> <h2>Example 4: Cluster spiral data %%<a name="5"></a></h2><pre class="codeinput">d                                       = 2;
+N                                       = 5000;
+Z                                       = spiral2d(N);
+
+
+options.K                               = 50;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = 0;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(7)
+plot(Z(1 , :) , Z(2 , :) , <span class="string">'k+'</span> , <span class="string">'markersize'</span> , 2 , <span class="string">'linewidth'</span> , 2);
+hold <span class="string">on</span>
+plot(centroids(1 , :) , centroids(2 , :) , <span class="string">'mo'</span>, <span class="string">'markersize'</span> , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  <span class="string">'linewidth'</span> , 2);
+h = title(sprintf(<span class="string">'Kmeans clustering for uniform data, assuming K = %d clusters'</span> , options.K));
+set(h ,  <span class="string">'fontsize'</span> , 12);
+
+hold <span class="string">off</span>
+</pre><pre class="codeoutput">Elapsed time is 0.057073 seconds.
+</pre><img vspace="5" hspace="5" src="test_yael_kmeans_07.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.9<br></p></div><!--
+##### SOURCE BEGIN #####
+% Fast mex K-means clustering algorithm with possibility of K-mean++ initialization
+% (mex-interface modified from the original yael package https://gforge.inria.fr/projects/yael)
+% 
+% - Accept single/double precision input
+% - Support of BLAS/OpenMP for multi-core computation
+% 
+% Usage
+% REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH
+% 
+% [centroids, dis, assign , nassign , qerr] = yael_kmeans(X , [options]);
+% 
+% 
+% Inputs
+% REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-
+% 
+% X                                        Input data matrix (d x N) in single/double format 
+% 
+% options
+%        K                                 Number of centroid  (default K = 10)
+%        max_ite                           Number of iteration (default max_ite = 50)
+%        redo                              Number of time to restart K-means (default redo = 1)
+%        verbose                           Verbose level = {0,1,2,3} (default verbose = 0)
+%        init_random_mode                  0 <=> Kmeans++ initialization, 1<=> random selection ...
+%        normalize_sophisticated_mode      0/1 (No/Yes)
+%        BLOCK_N1                          Cache size block (default BLOCK_N1 = 1024)
+%        BLOCK_N2                          Cache size block (default BLOCK_N2 = 1024)
+%        seed                              Seed number for internal random generator (default random seed according to time)
+% 
+% If compiled with the "OMP" compilation flag
+% 
+%        num_threads                       Number of threads   (default num_threads = max number of core)
+% 
+% 
+% Outputs
+% REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-
+% 
+% centroids                               Centroids matrix (d x K) in single/double format 
+% dis                                     Distance of each xi to the closest centroid (1 x N) in single/double format
+% assign                                  Index of closest centroid to xi, i = 1,...,N in UINT32 format
+% nassign                                 Number of data associated with each cluster (1 x K) in UINT32 format
+% qerr                                    Quantification error during training process (1 x options.max_ite) in single/double format
+
+
+%% Example 1: Cluster a mixture of 3 Gaussians mixture %%
+
+
+clear,close all
+K                                   = 3;
+mu                                  = cat(3 , [-2.5 ; -3] , [0 ; 0] ,[ 5 ; 5]);                %(d x 1 x M)
+sigma                               = cat(3 , [2 0; 0 1] , [2 -.2; -.2 2] , [1 .9; .9 1]  ); %(d x d x M)
+p                                   = cat(3 , [0.3] , [0.2]  , [0.5]);                       %(1 x 1 x M)
+N                                   = 10000;
+[Z , index]                         = sample_mvgm(N , mu , sigma , p);
+[x , y]                             = ndellipse(mu , sigma);
+
+options.K                           = 3;
+options.max_ite                     = 50;
+options.num_threads                 = 2;
+
+tic,[centroids, dis, assign , nassign , qerr]         = yael_kmeans(Z  , options);,toc
+
+figure(1)
+plot(Z(1 , :) , Z(2 , :) , 'k+'  , x , y , 'g' , 'markersize' , 2 , 'linewidth' , 2);
+hold on
+plot(reshape(mu(1 , : , :) , 1 , K) , reshape(mu(2 , : , :) , 1 , K)  , 'r+'  ,  centroids(1 , :) , centroids(2 , :) , 'mo', 'markersize' , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  'linewidth' , 2)
+h = title(sprintf('Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters' , K , options.K));
+set(h ,  'fontsize' , 12)
+
+hold off
+
+figure(2)
+h = semilogy(1:options.max_ite , qerr);
+ylabel('Quantification Error', 'fontsize' , 11)
+xlabel('Kmeans iteration' , 'fontsize' , 11)
+set(h , 'linewidth' , 2)
+h = title(sprintf('Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters' , K , options.K));
+set(h ,  'fontsize' , 12)
+
+grid on
+
+%% Example 2: Cluster a mixture of K Gaussians mixture %%
+
+d                                       = 2;
+K                                       = 10;
+clust_spread                            = 0.1;
+N                                       = 20000;
+
+
+
+[mu , sigma , p]                        = gene_mvgm(d , K , clust_spread);
+
+[Z , index]                             = sample_mvgm(N , mu , sigma , p);
+[x , y]                                 = ndellipse(mu , sigma);
+
+options.K                               = K;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = -1;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(3)
+plot(Z(1 , :) , Z(2 , :) , 'k+'  , x , y , 'g' , 'markersize' , 2 , 'linewidth' , 2);
+hold on
+plot(reshape(mu(1 , : , :) , 1 , K) , reshape(mu(2 , : , :) , 1 , K)  , 'r+'  ,  centroids(1 , :) , centroids(2 , :) , 'mo', 'markersize' , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  'linewidth' , 2);
+h = title(sprintf('Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters' , K , options.K));
+set(h ,  'fontsize' , 12);
+
+hold off
+
+figure(4)
+h = semilogy(1:options.max_ite , qerr);
+ylabel('Quantification Error', 'fontsize' , 11)
+xlabel('Kmeans iteration' , 'fontsize' , 11)
+set(h , 'linewidth' , 2)
+h = title(sprintf('Kmeans clustering for a %d gaussians mixture pdf, assuming K = %d clusters' , K , options.K));
+set(h ,  'fontsize' , 12)
+grid on
+
+
+%% Example 3: Cluster uniform random data %%
+
+d                                       = 2;
+N                                       = 2000;
+Z                                       = rand(d , N);
+
+options.K                               = 50;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = -1;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(5)
+plot(Z(1 , :) , Z(2 , :) , 'k+' , 'markersize' , 2 , 'linewidth' , 2);
+hold on
+plot(centroids(1 , :) , centroids(2 , :) , 'mo', 'markersize' , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  'linewidth' , 2);
+h = title(sprintf('Kmeans clustering for uniform data, assuming K = %d clusters' , options.K));
+set(h ,  'fontsize' , 12);
+
+hold off
+
+
+
+figure(6)
+
+bar(1:options.K , nassign)
+ylabel('Assignement', 'fontsize' , 11)
+xlabel('Cluster #' , 'fontsize' , 11)
+axis([-0.0 , options.K+0.5 , 0 , 1.1*max(nassign)])
+h = title(sprintf('Assignement for the K=%d clusters' ,options.K));
+
+
+%% Example 4: Cluster spiral data %%
+
+d                                       = 2;
+N                                       = 5000;
+Z                                       = spiral2d(N);
+
+
+options.K                               = 50;
+options.init_random_mode                = 0;
+options.normalize_sophisticated_mode    = 0;
+options.BLOCK_N1                        = 1024;
+options.BLOCK_N2                        = 1024;
+options.seed                            = 1234543;
+options.num_threads                     = 0;
+
+
+tic,[centroids, dis, assign , nassign , qerr]  = yael_kmeans(single(Z)  , options);,toc
+
+figure(7)
+plot(Z(1 , :) , Z(2 , :) , 'k+' , 'markersize' , 2 , 'linewidth' , 2);
+hold on
+plot(centroids(1 , :) , centroids(2 , :) , 'mo', 'markersize' , 6);
+h = voronoi(double(centroids(1 , :)) , double(centroids(2 , :)) );
+set(h ,  'linewidth' , 2);
+h = title(sprintf('Kmeans clustering for uniform data, assuming K = %d clusters' , options.K));
+set(h ,  'fontsize' , 12);
+
+hold off
+
+
+
+##### SOURCE END #####
+--></body></html>
